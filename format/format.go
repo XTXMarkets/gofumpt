@@ -450,25 +450,7 @@ func (f *fumpter) applyPre(c *astutil.Cursor) {
 		}
 
 	case *ast.InterfaceType:
-		var prev *ast.Field
-		for _, method := range node.Methods.List {
-			switch {
-			case prev == nil:
-				removeToPos := method.Pos()
-				if comments := f.commentsBetween(node.Interface, method.Pos()); len(comments) > 0 {
-					// only remove leading line upto the first comment
-					removeToPos = comments[0].Pos()
-				}
-				// remove leading lines if they exist
-				f.removeLines(f.Line(node.Interface)+1, f.Line(removeToPos))
-
-			case len(f.commentsBetween(prev.End(), method.Pos())) > 0:
-				// continue
-			default:
-				f.removeLinesBetween(prev.End(), method.Pos())
-			}
-			prev = method
-		}
+		break
 
 	case *ast.BlockStmt:
 		f.stmts(node.List)
@@ -800,67 +782,62 @@ func isCgoImport(decl *ast.GenDecl) bool {
 }
 
 // joinStdImports ensures that all standard library imports are together and at
-// the top of the imports list.
+// the top of the imports list, followed by internal XTX packages, followed by everything else.
+// To be most conservative all import blocks with comments or custom names are ignored.
 func (f *fumpter) joinStdImports(d *ast.GenDecl) {
-	var std, other []ast.Spec
-	firstGroup := true
-	lastEnd := d.Pos()
-	needsSort := false
-	for i, spec := range d.Specs {
-		spec := spec.(*ast.ImportSpec)
-		if coms := f.commentsBetween(lastEnd, spec.Pos()); len(coms) > 0 {
-			lastEnd = coms[len(coms)-1].End()
-		}
-		if i > 0 && firstGroup && f.Line(spec.Pos()) > f.Line(lastEnd)+1 {
-			firstGroup = false
-		} else {
-			// We're still in the first group, update lastEnd.
-			lastEnd = spec.End()
-		}
+	if len(d.Specs) == 0 || d.End() <= d.Pos()+6 { // empty or too short import block
+		return
+	}
+	if f.anyCommentsOrCustomNamesInImportBlock(d) { // Don't try to modify any import blocks with comments or custom names
+		return
+	}
+	var std, xtx, other []ast.Spec
 
+	for _, spec := range d.Specs {
+		spec := spec.(*ast.ImportSpec)
 		path, _ := strconv.Unquote(spec.Path.Value)
 		switch {
-		// Imports with a period are definitely third party.
+		case strings.HasPrefix(path, "xtx/"):
+			xtx = append(xtx, spec)
 		case strings.Contains(path, "."):
-			fallthrough
-		// "test" and "example" are reserved as per golang.org/issue/37641.
-		// "internal" is unreachable.
-		case strings.HasPrefix(path, "test/") ||
-			strings.HasPrefix(path, "example/") ||
-			strings.HasPrefix(path, "internal/"):
-			fallthrough
-		// To be conservative, if an import has a name or an inline
-		// comment, and isn't part of the top group, treat it as non-std.
-		case !firstGroup && (spec.Name != nil || spec.Comment != nil):
+			// Imports with a period are definitely third party.
 			other = append(other, spec)
-			continue
+		default:
+			std = append(std, spec)
 		}
+	}
 
-		// If we're moving this std import further up, reset its
-		// position, to avoid breaking comments.
-		if !firstGroup || len(other) > 0 {
-			setPos(reflect.ValueOf(spec), d.Pos())
-			needsSort = true
+	for _, spec := range std {
+		setPos(reflect.ValueOf(spec), d.Pos())
+	}
+	f.addNewline(d.Pos() + 1)
+	f.addNewline(d.Pos() + 2)
+	for _, spec := range xtx {
+		setPos(reflect.ValueOf(spec), d.Pos()+3)
+	}
+	f.addNewline(d.Pos() + 4)
+	f.addNewline(d.Pos() + 5)
+	for _, spec := range other {
+		setPos(reflect.ValueOf(spec), d.Pos()+6)
+	}
+
+	d.Specs = append(append(std, xtx...), other...)
+	ast.SortImports(f.fset, f.astFile)
+}
+
+func (f *fumpter) anyCommentsOrCustomNamesInImportBlock(d *ast.GenDecl) bool {
+	lastEnd := d.Pos()
+	for _, spec := range d.Specs {
+		spec := spec.(*ast.ImportSpec)
+		if coms := f.commentsBetween(lastEnd, spec.Pos()); len(coms) > 0 {
+			return true
 		}
-		std = append(std, spec)
+		if spec.Name != nil || spec.Comment != nil {
+			return true
+		}
+		lastEnd = spec.End()
 	}
-	// Ensure there is an empty line between std imports and other imports.
-	if len(std) > 0 && len(other) > 0 && f.Line(std[len(std)-1].End())+1 >= f.Line(other[0].Pos()) {
-		// We add two newlines, as that's necessary in some edge cases.
-		// For example, if the std and non-std imports were together and
-		// without indentation, adding one newline isn't enough. Two
-		// empty lines will be printed as one by go/printer, anyway.
-		f.addNewline(other[0].Pos() - 1)
-		f.addNewline(other[0].Pos())
-	}
-	// Finally, join the imports, keeping std at the top.
-	d.Specs = append(std, other...)
-
-	// If we moved any std imports to the first group, we need to sort them
-	// again.
-	if needsSort {
-		ast.SortImports(f.fset, f.astFile)
-	}
+	return false
 }
 
 // mergeAdjacentFields returns fields with adjacent fields merged if possible.
