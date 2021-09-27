@@ -1,4 +1,4 @@
-module mvdan.cc/gofumpt
+module github.com/XTXMarkets/gofumpt
 
 go 1.15
 

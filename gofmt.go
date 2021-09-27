@@ -22,8 +22,8 @@ import (
 	"runtime/pprof"
 	"strings"
 
-	gformat "mvdan.cc/gofumpt/format"
-	"mvdan.cc/gofumpt/internal/diff"
+	gformat "github.com/XTXMarkets/gofumpt/format"
+	"github.com/XTXMarkets/gofumpt/internal/diff"
 )
 
 var (
