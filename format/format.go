@@ -548,10 +548,7 @@ func (f *fumpter) applyPre(c *astutil.Cursor) {
 			f.removeLines(openLine, closeLine)
 		}
 
-		// Merging adjacent fields (e.g. parameters) is disabled by default.
-		if !f.ExtraRules {
-			break
-		}
+		// Merging adjacent fields (e.g. parameters)
 		switch c.Parent().(type) {
 		case *ast.FuncDecl, *ast.FuncType, *ast.InterfaceType:
 			node.List = f.mergeAdjacentFields(node.List)
