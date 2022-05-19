@@ -5,6 +5,7 @@ gofumpt -d foo.go.golden
 ! stdout .
 
 -- foo.go --
+//go:build tag
 // +build tag
 
 package p
@@ -22,6 +23,10 @@ package p
 //nolint // explanation
 
 //nolint:somelinter // explanation
+
+//noinspection ALL
+
+//noinspection foo,bar
 
 //not actually: a directive
 
@@ -63,6 +68,7 @@ type foo int
 
 //
 -- foo.go.golden --
+//go:build tag
 // +build tag
 
 package p
@@ -80,6 +86,10 @@ package p
 //nolint // explanation
 
 //nolint:somelinter // explanation
+
+//noinspection ALL
+
+//noinspection foo,bar
 
 // not actually: a directive
 
