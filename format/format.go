@@ -931,8 +931,11 @@ func (f *fumpter) anyCommentsOrCustomNamesInImportBlock(d *ast.GenDecl) bool {
 		if coms := f.commentsBetween(lastEnd, spec.Pos()); len(coms) > 0 {
 			return true
 		}
-		if spec.Name != nil || spec.Comment != nil {
+		if spec.Comment != nil {
 			return true
+		}
+		if spec.Name != nil && strings.HasSuffix(spec.Path.Value, "/"+spec.Name.Name+"\"") {
+			spec.Name = nil
 		}
 		lastEnd = spec.End()
 	}
